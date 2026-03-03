@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <title>Тетрис • Telegram Mini App</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --grid: #161b22;
+      --border: #30363d;
+      --text: #c9d1d9;
+      --shadow: rgba(0,0,0,0.6);
+      --accent: #6366f1;
+      --accent-dark: #4f46e5;
+      --block-I: #58a6ff;
+      --block-O: #f59e0b;
+      --block-T: #8b5cf6;
+      --block-S: #10b981;
+      --block-Z: #ef4444;
+      --block-J: #3b82f6;
+      --block-L: #f97316;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      overflow: hidden;
+    }
+
+    header {
+      padding: 20px 0 12px;
+      text-align: center;
+      width: 100%;
+    }
+
+    h1 {
+      font-size: clamp(2rem, 8vw, 3.2rem);
+      background: linear-gradient(90deg, #a5b4fc, #c084fc, #ec4899);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      text-shadow: 0 0 20px rgba(165,180,252,0.4);
+    }
+
+    #game-area {
+      display: flex;
+      gap: 24px;
+      flex-wrap: wrap;
+      justify-content: center;
+      width: 100%;
+      max-width: 720px;
+      padding: 16px;
+    }
+
+    #board {
+      width: 240px;
+      height: 480px;
+      background: var(--grid);
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 10px 40px var(--shadow);
+      border: 1px solid var(--border);
+      position: relative;
+      display: grid;
+      grid-template-columns: repeat(10, 1fr);
+      grid-template-rows: repeat(20, 1fr);
+      gap: 1px;
+      padding: 1px;
+      background: #0f1620;
+    }
+
+    .cell {
+      background: transparent;
+      border-radius: 2px;
+    }
+
+    .block {
+      border-radius: 4px;
+      box-shadow: inset 0 2px 6px rgba(0,0,0,0.5);
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .I { background: var(--block-I); }
+    .O { background: var(--block-O); }
+    .T { background: var(--block-T); }
+    .S { background: var(--block-S); }
+    .Z { background: var(--block-Z); }
+    .J { background: var(--block-J); }
+    .L { background: var(--block-L); }
+
+    #next-piece {
+      width: 120px;
+      height: 120px;
+      background: var(--grid);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      box-shadow: 0 6px 24px var(--shadow);
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      grid-template-rows: repeat(4, 1fr);
+      gap: 2px;
+      padding: 8px;
+    }
+
+    #score-panel {
+      margin: 16px 0;
+      font-size: clamp(1.2rem, 5vw, 1.6rem);
+      text-align: center;
+    }
+
+    #game-over {
+      position: absolute;
+      inset: 0;
+      background: rgba(13,17,23,0.94);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: #ff4444;
+      font-size: clamp(3rem, 12vw, 5rem);
+      font-weight: bold;
+      text-shadow: 0 0 30px #ff4444aa;
+      z-index: 10;
+    }
+
+    #game-over.show { display: flex; animation: fadeIn 0.6s ease; }
+
+    @keyframes fadeIn { from {opacity:0; transform:scale(0.85)} to {opacity:1; transform:scale(1)} }
+
+    .back-btn, button {
+      margin: 24px auto;
+      padding: 14px 36px;
+      font-size: clamp(1.1rem, 4vw, 1.4rem);
+      background: linear-gradient(135deg, var(--accent), var(--accent-dark));
+      color: white;
+      border: none;
+      border-radius: 16px;
+      cursor: pointer;
+      box-shadow: 0 8px 24px rgba(99,102,241,0.4);
+      transition: all 0.2s;
+      text-decoration: none;
+      display: inline-block;
+    }
+
+    .back-btn:active, button:active { transform: scale(0.96); }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>Тетрис</h1>
+  </header>
+
+  <div id="game-area">
+    <div id="board"></div>
+    <div>
+      <div id="next-piece"></div>
+      <div id="score-panel">
+        Счёт: <span id="score">0</span><br>
+        Уровень: <span id="level">1</span>
+      </div>
+    </div>
+  </div>
+
+  <div id="game-over">
+    <div>GAME OVER</div>
+    <button onclick="startGame()">НОВАЯ ИГРА</button>
+  </div>
+
+  <a href=index.html class="back-btn">← К списку игр</a>
+
+  <script>
+    const tg = window.Telegram.WebApp;
+    tg.ready();
+    tg.expand();
+
+    const COLS = 10;
+    const ROWS = 20;
+    const BLOCK_SIZE = 24;
+
+    let grid = Array(ROWS).fill().map(() => Array(COLS).fill(null));
+    let currentPiece = null;
+    let nextPiece = null;
+    let score = 0;
+    let level = 1;
+    let dropInterval = 1000;
+    let lastDropTime = 0;
+    let gameOver = false;
+    let gameLoop;
+
+    const shapes = [
+      { type: 'I', color: '--block-I', blocks: [[0,0,0,0], [1,1,1,1], [0,0,0,0], [0,0,0,0]] },
+      { type: 'O', color: '--block-O', blocks: [[1,1],[1,1]] },
+      { type: 'T', color: '--block-T', blocks: [[0,1,0],[1,1,1],[0,0,0]] },
+      { type: 'S', color: '--block-S', blocks: [[0,1,1],[1,1,0],[0,0,0]] },
+      { type: 'Z', color: '--block-Z', blocks: [[1,1,0],[0,1,1],[0,0,0]] },
+      { type: 'J', color: '--block-J', blocks: [[1,0,0],[1,1,1],[0,0,0]] },
+      { type: 'L', color: '--block-L', blocks: [[0,0,1],[1,1,1],[0,0,0]] }
+    ];
+
+    function createPiece() {
+      const shape = shapes[Math.floor(Math.random() * shapes.length)];
+      return {
+        type: shape.type,
+        color: shape.color,
+        x: Math.floor(COLS / 2) - 2,
+        y: 0,
+        rotation: 0,
+        blocks: shape.blocks.map(row => row.slice())
+      };
+    }
+
+    function rotatePiece() {
+      const oldBlocks = currentPiece.blocks.map(row => row.slice());
+      const n = currentPiece.blocks.length;
+      const rotated = Array(n).fill().map(() => Array(n).fill(0));
+
+      for (let y = 0; y < n; y++) {
+        for (let x = 0; x < n; x++) {
+          rotated[x][n-1-y] = currentPiece.blocks[y][x];
+        }
+      }
+
+      currentPiece.blocks = rotated;
+
+      // Проверка на столкновение после поворота
+      if (!validMove(0, 0)) {
+        currentPiece.blocks = oldBlocks; // откат
+      }
+    }
+
+    function validMove(dx = 0, dy = 0) {
+      for (let y = 0; y < currentPiece.blocks.length; y++) {
+        for (let x = 0; x < currentPiece.blocks[y].length; x++) {
+          if (currentPiece.blocks[y][x]) {
+            const newX = currentPiece.x + x + dx;
+            const newY = currentPiece.y + y + dy;
+
+            if (newX < 0 || newX >= COLS || newY >= ROWS) return false;
+            if (newY >= 0 && grid[newY][newX]) return false;
+          }
+        }
+      }
+      return true;
+    }
+
+    function merge() {
+      currentPiece.blocks.forEach((row, dy) => {
+        row.forEach((value, dx) => {
+          if (value) {
+            const x = currentPiece.x + dx;
+            const y = currentPiece.y + dy;
+            if (y >= 0) {
+              grid[y][x] = currentPiece.color;
+            }
+          }
+        });
+      });
+    }
+
+    function clearLines() {
+      let lines = 0;
+      for (let y = ROWS - 1; y >= 0; y--) {
+        if (grid[y].every(cell => cell !== null)) {
+          grid.splice(y, 1);
+          grid.unshift(Array(COLS).fill(null));
+          lines++;
+          y++; // проверяем ту же строку снова
+        }
+      }
+
+      if (lines > 0) {
+        score += [0, 100, 300, 500, 800][lines] * level;
+        level = Math.floor(score / 5000) + 1;
+        dropInterval = Math.max(100, 1000 - (level - 1) * 80);
+        document.getElementById('score').textContent = score;
+        document.getElementById('level').textContent = level;
+        tg.HapticFeedback.notificationOccurred('success');
+      }
+    }
+
+    function drop() {
+      if (validMove(0, 1)) {
+        currentPiece.y++;
+      } else {
+        merge();
+        clearLines();
+        currentPiece = nextPiece;
+        nextPiece = createPiece();
+        renderNextPiece();
+
+        if (!validMove(0, 0)) {
+          gameOver = true;
+          document.getElementById('game-over').classList.add('show');
+          tg.HapticFeedback.notificationOccurred('error');
+          return;
+        }
+      }
+      render();
+    }
+
+    function game(timestamp) {
+      if (gameOver) return;
+
+      if (!lastDropTime) lastDropTime = timestamp;
+      if (timestamp - lastDropTime > dropInterval) {
+        drop();
+        lastDropTime = timestamp;
+      }
+
+      requestAnimationFrame(game);
+    }
+
+    function render() {
+      const boardEl = document.getElementById('board');
+      boardEl.innerHTML = '';
+
+      // Отрисовка сетки
+      for (let y = 0; y < ROWS; y++) {
+        for (let x = 0; x < COLS; x++) {
+          const cell = document.createElement('div');
+          cell.className = 'block';
+          if (grid[y][x]) {
+            cell.style.background = `var(${grid[y][x]})`;
+          }
+          boardEl.appendChild(cell);
+        }
+      }
+
+      // Текущая фигура
+      if (currentPiece) {
+        currentPiece.blocks.forEach((row, dy) => {
+          row.forEach((value, dx) => {
+            if (value) {
+              const x = currentPiece.x + dx;
+              const y = currentPiece.y + dy;
+              if (x >= 0 && x < COLS && y >= 0 && y < ROWS) {
+                const idx = y * COLS + x;
+                boardEl.children[idx].style.background = `var(${currentPiece.color})`;
+                boardEl.children[idx].style.boxShadow = 'inset 0 2px 6px rgba(0,0,0,0.5)';
+              }
+            }
+          });
+        });
+      }
+    }
+
+    function renderNextPiece() {
+      const nextEl = document.getElementById('next-piece');
+      nextEl.innerHTML = '';
+      nextPiece.blocks.forEach((row, dy) => {
+        row.forEach((value, dx) => {
+          const cell = document.createElement('div');
+          cell.style.background = value ? `var(${nextPiece.color})` : 'transparent';
+          cell.style.border = value ? '1px solid rgba(255,255,255,0.15)' : 'none';
+          cell.style.boxShadow = value ? 'inset 0 2px 4px rgba(0,0,0,0.4)' : 'none';
+          nextEl.appendChild(cell);
+        });
+      });
+    }
+
+    // Управление клавиатурой (ПК)
+    document.addEventListener('keydown', e => {
+      if (gameOver) return;
+      e.preventDefault();
+      switch(e.key) {
+        case 'ArrowLeft': case 'a': case 'ф': currentPiece.x--; if (!validMove()) currentPiece.x++; break;
+        case 'ArrowRight': case 'd': case 'в': currentPiece.x++; if (!validMove()) currentPiece.x--; break;
+        case 'ArrowDown': case 's': case 'ы': drop(); break;
+        case 'ArrowUp': case 'w': case 'ц': rotatePiece(); break;
+        case ' ': rotatePiece(); break;
+      }
+      render();
+    });
+
+    // Управление свайпами (мобильные)
+    let touchStartX = 0, touchStartY = 0;
+    document.addEventListener('touchstart', e => {
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
+    }, {passive: true});
+
+    document.addEventListener('touchend', e => {
+      if (gameOver) return;
+      const dx = e.changedTouches[0].clientX - touchStartX;
+      const dy = e.changedTouches[0].clientY - touchStartY;
+
+      if (Math.abs(dx) > Math.abs(dy)) {
+        if (dx > 50) { currentPiece.x++; if (!validMove()) currentPiece.x--; }
+        else if (dx < -50) { currentPiece.x--; if (!validMove()) currentPiece.x++; }
+      } else {
+        if (dy > 50) drop();
+        else if (dy < -50) rotatePiece();
+      }
+      render();
+    }, {passive: true});
+
+    function startGame() {
+      grid = Array(ROWS).fill().map(() => Array(COLS).fill(null));
+      score = 0;
+      level = 1;
+      dropInterval = 1000;
+      gameOver = false;
+      document.getElementById('game-over').classList.remove('show');
+      document.getElementById('score').textContent = 0;
+      document.getElementById('level').textContent = 1;
+
+      currentPiece = createPiece();
+      nextPiece = createPiece();
+      renderNextPiece();
+      render();
+      requestAnimationFrame(game);
+    }
+
+    startGame();
+  </script>
+</body>
+</html>

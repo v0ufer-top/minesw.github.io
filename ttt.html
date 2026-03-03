@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <title>Крестики-нолики • Telegram Mini App</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --grid: #161b22;
+      --border: #30363d;
+      --text: #c9d1d9;
+      --shadow: rgba(0,0,0,0.6);
+      --accent: #6366f1;
+      --accent-dark: #4f46e5;
+      --x-color: #f87171;
+      --o-color: #60a5fa;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    header {
+      padding: 20px 0 12px;
+      text-align: center;
+      width: 100%;
+    }
+
+    h1 {
+      font-size: clamp(2rem, 8vw, 3.2rem);
+      background: linear-gradient(90deg, #a5b4fc, #c084fc, #ec4899);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      text-shadow: 0 0 20px rgba(165,180,252,0.4);
+    }
+
+    #mode-selector {
+      margin: 16px 0;
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+    }
+
+    .mode-btn {
+      padding: 10px 20px;
+      font-size: 1rem;
+      background: var(--grid);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .mode-btn.active {
+      background: var(--accent);
+      color: white;
+      border-color: var(--accent-dark);
+      box-shadow: 0 0 12px rgba(99,102,241,0.5);
+    }
+
+    #status {
+      font-size: clamp(1.1rem, 4vw, 1.4rem);
+      margin: 12px 0;
+      min-height: 1.4em;
+      text-align: center;
+    }
+
+    #board {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+      gap: 10px;
+      width: min(90vw, 360px);
+      aspect-ratio: 1/1;
+      padding: 16px;
+      background: var(--grid);
+      border-radius: 16px;
+      box-shadow: 0 10px 40px var(--shadow);
+      border: 1px solid var(--border);
+    }
+
+    .cell {
+      background: var(--bg);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: clamp(3rem, 15vw, 6rem);
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      user-select: none;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .cell:hover {
+      background: rgba(99,102,241,0.15);
+    }
+
+    .cell.x {
+      color: var(--x-color);
+      text-shadow: 0 0 20px rgba(248,113,113,0.6);
+    }
+
+    .cell.o {
+      color: var(--o-color);
+      text-shadow: 0 0 20px rgba(96,165,250,0.6);
+    }
+
+    #game-over {
+      position: absolute;
+      inset: 0;
+      background: rgba(13,17,23,0.94);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: #ff4444;
+      font-size: clamp(3rem, 12vw, 5rem);
+      font-weight: bold;
+      text-shadow: 0 0 30px #ff4444aa;
+      z-index: 10;
+    }
+
+    #game-over.show { display: flex; animation: fadeIn 0.6s ease; }
+
+    @keyframes fadeIn { from {opacity:0; transform:scale(0.85)} to {opacity:1; transform:scale(1)} }
+
+    .back-btn, button {
+      margin: 24px auto;
+      padding: 14px 36px;
+      font-size: clamp(1.1rem, 4vw, 1.4rem);
+      background: linear-gradient(135deg, var(--accent), var(--accent-dark));
+      color: white;
+      border: none;
+      border-radius: 16px;
+      cursor: pointer;
+      box-shadow: 0 8px 24px rgba(99,102,241,0.4);
+      transition: all 0.2s;
+      text-decoration: none;
+      display: inline-block;
+    }
+
+    .back-btn:active, button:active { transform: scale(0.96); }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>Крестики-нолики</h1>
+  </header>
+
+  <div id="mode-selector">
+    <button class="mode-btn active" data-mode="friend">С другом</button>
+    <button class="mode-btn" data-mode="bot">С ботом</button>
+  </div>
+
+  <div id="status">Выбери режим и начни игру</div>
+
+  <div id="board"></div>
+
+  <div id="game-over">
+    <div id="result">Игра окончена</div>
+    <button onclick="startGame()">НОВАЯ ИГРА</button>
+  </div>
+
+  <a href=index.html class="back-btn">← К списку игр</a>
+
+  <script>
+    const tg = window.Telegram.WebApp;
+    tg.ready();
+    tg.expand();
+
+    const boardEl = document.getElementById('board');
+    const status = document.getElementById('status');
+    const gameOverEl = document.getElementById('game-over');
+    const resultEl = document.getElementById('result');
+    const modeButtons = document.querySelectorAll('.mode-btn');
+
+    let currentPlayer = 'X';
+    let gameBoard = Array(9).fill(null);
+    let gameActive = false;
+    let vsBot = false;
+
+    // Создаём клетки
+    for (let i = 0; i < 9; i++) {
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      cell.dataset.index = i;
+      cell.addEventListener('click', handleCellClick);
+      boardEl.appendChild(cell);
+    }
+
+    const cells = boardEl.children;
+
+    // Выбор режима
+    modeButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        modeButtons.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        vsBot = btn.dataset.mode === 'bot';
+        startGame();
+      });
+    });
+
+    function handleCellClick(e) {
+      const index = Number(e.target.dataset.index);
+      if (!gameActive || gameBoard[index] !== null || (vsBot && currentPlayer === 'O')) return;
+
+      makeMove(index, currentPlayer);
+
+      if (vsBot && gameActive && currentPlayer === 'O') {
+        setTimeout(botMove, 400); // небольшая задержка для ощущения "мышления"
+      }
+    }
+
+    function makeMove(index, player) {
+      gameBoard[index] = player;
+      cells[index].textContent = player;
+      cells[index].classList.add(player.toLowerCase());
+
+      tg.HapticFeedback.impactOccurred('light');
+
+      if (checkWinner(player)) {
+        resultEl.textContent = `Победил ${player}! 🎉`;
+        gameOverEl.classList.add('show');
+        gameActive = false;
+        tg.HapticFeedback.notificationOccurred('success');
+        return;
+      }
+
+      if (!gameBoard.includes(null)) {
+        resultEl.textContent = 'Ничья!';
+        gameOverEl.classList.add('show');
+        gameActive = false;
+        return;
+      }
+
+      currentPlayer = player === 'X' ? 'O' : 'X';
+      status.textContent = `Ход: ${currentPlayer}${vsBot && currentPlayer === 'O' ? ' (бот думает...)' : ''}`;
+    }
+
+    function checkWinner(player) {
+      const winPatterns = [
+        [0,1,2], [3,4,5], [6,7,8],
+        [0,3,6], [1,4,7], [2,5,8],
+        [0,4,8], [2,4,6]
+      ];
+
+      return winPatterns.some(pattern => {
+        return pattern.every(idx => gameBoard[idx] === player);
+      });
+    }
+
+    function botMove() {
+      if (!gameActive || currentPlayer !== 'O') return;
+
+      const bestMove = getBestMove();
+      if (bestMove !== -1) {
+        makeMove(bestMove, 'O');
+      }
+    }
+
+    function getBestMove() {
+      let bestScore = -Infinity;
+      let bestMove = -1;
+
+      for (let i = 0; i < 9; i++) {
+        if (gameBoard[i] === null) {
+          gameBoard[i] = 'O';
+          let score = minimax(gameBoard, 0, false);
+          gameBoard[i] = null;
+          if (score > bestScore) {
+            bestScore = score;
+            bestMove = i;
+          }
+        }
+      }
+      return bestMove;
+    }
+
+    function minimax(board, depth, isMaximizing) {
+      if (checkWinner('O')) return 10 - depth;
+      if (checkWinner('X')) return depth - 10;
+      if (!board.includes(null)) return 0;
+
+      if (isMaximizing) {
+        let best = -Infinity;
+        for (let i = 0; i < 9; i++) {
+          if (board[i] === null) {
+            board[i] = 'O';
+            best = Math.max(best, minimax(board, depth + 1, false));
+            board[i] = null;
+          }
+        }
+        return best;
+      } else {
+        let best = Infinity;
+        for (let i = 0; i < 9; i++) {
+          if (board[i] === null) {
+            board[i] = 'X';
+            best = Math.min(best, minimax(board, depth + 1, true));
+            board[i] = null;
+          }
+        }
+        return best;
+      }
+    }
+
+    function startGame() {
+      gameBoard = Array(9).fill(null);
+      currentPlayer = 'X';
+      gameActive = true;
+      status.textContent = `Ваш ход (X)${vsBot ? ' (вы играете за X)' : ''}`;
+      gameOverEl.classList.remove('show');
+      Array.from(cells).forEach(cell => {
+        cell.textContent = '';
+        cell.className = 'cell';
+      });
+    }
+
+    startGame();
+  </script>
+</body>
+</html>
