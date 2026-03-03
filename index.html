@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <title>Сапёр • Telegram Mini App</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --cell: #161b22;
+      --cell-hover: #21262d;
+      --revealed: #0d1117;
+      --flag: #ff6b6b;
+      --mine: #ff4444;
+      --text: #c9d1d9;
+      --number1: #58a6ff;
+      --number2: #3fb950;
+      --number3: #d29922;
+      --number4: #f85149;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      touch-action: manipulation;
+    }
+
+    h1 {
+      font-size: clamp(1.6rem, 5vw, 2.4rem);
+      margin: 10px 0 6px;
+      text-shadow: 0 2px 10px rgba(88, 166, 255, 0.4);
+    }
+
+    #info {
+      font-size: clamp(0.9rem, 3vw, 1rem);
+      opacity: 0.8;
+      margin-bottom: 10px;
+      text-align: center;
+      padding: 0 16px;
+    }
+
+    #field {
+      display: grid;
+      gap: 3px;
+      padding: 12px;
+      border-radius: 12px;
+      background: rgba(22, 27, 34, 0.6);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      backdrop-filter: blur(8px);
+      max-width: 95vw;
+      width: fit-content;
+    }
+
+    .cell {
+      width:  clamp(36px, 8vw, 52px);
+      height: clamp(36px, 8vw, 52px);
+      background: var(--cell);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: clamp(1.2rem, 5vw, 1.7rem);
+      font-weight: bold;
+      user-select: none;
+      transition: all 0.12s ease;
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.5);
+      touch-action: manipulation;
+    }
+
+    .cell:hover:not(.revealed):not(.mine) {
+      background: var(--cell-hover);
+    }
+
+    .cell:active, .cell.touch-active {
+      transform: scale(0.92);
+      background: var(--cell-hover);
+    }
+
+    .cell.revealed {
+      background: var(--revealed);
+      box-shadow: inset 0 2px 6px rgba(0,0,0,0.7);
+      cursor: default;
+    }
+
+    .cell.flag {
+      background: linear-gradient(135deg, #ff6b6b, #ef4444);
+      color: white;
+    }
+
+    .cell.mine {
+      background: var(--mine);
+      animation: explode 0.5s ease forwards;
+      color: white;
+    }
+
+    @keyframes explode {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.5); }
+      100% { transform: scale(1.2); opacity: 0.85; }
+    }
+
+    .number-1 { color: var(--number1); }
+    .number-2 { color: var(--number2); }
+    .number-3 { color: var(--number3); }
+    .number-4 { color: var(--number4); }
+    .number-5 { color: #a371f7; }
+    .number-6 { color: #f778ba; }
+    .number-7 { color: #ec4899; }
+    .number-8 { color: #f43f5e; }
+
+    #game-over {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.88);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: #ff4444;
+      font-size: clamp(2.5rem, 10vw, 4rem);
+      font-weight: bold;
+      text-shadow: 0 0 30px #ff4444aa;
+      z-index: 999;
+    }
+
+    #game-over.show {
+      display: flex;
+      animation: fadeIn 0.5s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: scale(0.9); }
+      to   { opacity: 1; transform: scale(1); }
+    }
+
+    button {
+      margin-top: 20px;
+      padding: 14px 36px;
+      font-size: clamp(1.1rem, 4vw, 1.4rem);
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      color: white;
+      border: none;
+      border-radius: 14px;
+      cursor: pointer;
+      box-shadow: 0 8px 24px rgba(99, 102, 241, 0.5);
+      transition: all 0.2s;
+    }
+
+    button:active {
+      transform: scale(0.95);
+    }
+
+    @media (min-width: 768px) {
+      .cell { width: 48px; height: 48px; font-size: 1.6rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Сапёр</h1>
+  <div id="info">ЛКМ / тап — открыть • ПКМ / долгое нажатие — флажок</div>
+  <div id="field"></div>
+
+  <div id="game-over">
+    <div>GAME OVER</div>
+    <button onclick="startGame()">НОВАЯ ИГРА</button>
+  </div>
+
+  <script>
+    const tg = window.Telegram.WebApp;
+    tg.ready();
+    tg.expand();
+
+    const ROWS = 10;
+    const COLS = 10;
+    const MINES = 15;
+
+    let board = [];
+    let revealed = [];
+    let flags = [];
+    let gameOver = false;
+
+    let touchTimer = null;
+    let touchTarget = null;
+
+    function startGame() {
+      gameOver = false;
+      document.getElementById("game-over").classList.remove("show");
+
+      board = Array(ROWS).fill().map(() => Array(COLS).fill(0));
+      revealed = Array(ROWS).fill().map(() => Array(COLS).fill(false));
+      flags = Array(ROWS).fill().map(() => Array(COLS).fill(false));
+
+      let placed = 0;
+      while (placed < MINES) {
+        const r = Math.floor(Math.random() * ROWS);
+        const c = Math.floor(Math.random() * COLS);
+        if (board[r][c] !== -1) {
+          board[r][c] = -1;
+          placed++;
+        }
+      }
+
+      for (let i = 0; i < ROWS; i++) {
+        for (let j = 0; j < COLS; j++) {
+          if (board[i][j] === -1) continue;
+          let count = 0;
+          for (let di = -1; di <= 1; di++) {
+            for (let dj = -1; dj <= 1; dj++) {
+              const ni = i + di, nj = j + dj;
+              if (ni >= 0 && ni < ROWS && nj >= 0 && nj < COLS && board[ni][nj] === -1) count++;
+            }
+          }
+          board[i][j] = count;
+        }
+      }
+
+      render();
+    }
+
+    function render() {
+      const field = document.getElementById("field");
+      field.innerHTML = "";
+      field.style.gridTemplateColumns = `repeat(${COLS}, minmax(36px, 52px))`;
+
+      for (let i = 0; i < ROWS; i++) {
+        for (let j = 0; j < COLS; j++) {
+          const cell = document.createElement("div");
+          cell.className = "cell";
+
+          if (revealed[i][j]) {
+            cell.classList.add("revealed");
+            if (board[i][j] === -1) {
+              cell.classList.add("mine");
+              cell.textContent = "💣";
+            } else if (board[i][j] > 0) {
+              cell.textContent = board[i][j];
+              cell.className += ` number-${Math.min(board[i][j], 8)}`;
+            }
+          } else if (flags[i][j]) {
+            cell.classList.add("flag");
+            cell.textContent = "🚩";
+          }
+
+          // Поддержка мыши (ПК)
+          cell.addEventListener("click", (e) => {
+            if (gameOver) return;
+            if (e.button === 0) openCell(i, j);
+          });
+
+          cell.addEventListener("contextmenu", (e) => {
+            e.preventDefault();
+            if (gameOver) return;
+            flagCell(i, j);
+            tg.HapticFeedback.impactOccurred("medium");
+          });
+
+          // Поддержка тач (телефон)
+          cell.addEventListener("touchstart", (e) => {
+            if (gameOver) return;
+            touchTarget = {i, j};
+            touchTimer = setTimeout(() => {
+              flagCell(i, j);
+              tg.HapticFeedback.impactOccurred("medium");
+              touchTarget = null;
+            }, 450); // долгое нажатие
+          });
+
+          cell.addEventListener("touchend", (e) => {
+            clearTimeout(touchTimer);
+            if (touchTarget && touchTarget.i === i && touchTarget.j === j) {
+              openCell(i, j);
+              tg.HapticFeedback.impactOccurred("light");
+            }
+            touchTarget = null;
+          });
+
+          cell.addEventListener("touchcancel", () => {
+            clearTimeout(touchTimer);
+            touchTarget = null;
+          });
+
+          field.appendChild(cell);
+        }
+      }
+    }
+
+    function openCell(r, c) {
+      if (r < 0 || r >= ROWS || c < 0 || c >= COLS || revealed[r][c] || flags[r][c] || gameOver) return;
+
+      revealed[r][c] = true;
+
+      if (board[r][c] === -1) {
+        gameOver = true;
+        revealAllMines();
+        document.getElementById("game-over").classList.add("show");
+        tg.HapticFeedback.notificationOccurred("error");
+        return;
+      }
+
+      if (board[r][c] === 0) {
+        for (let di = -1; di <= 1; di++) {
+          for (let dj = -1; dj <= 1; dj++) {
+            openCell(r + di, c + dj);
+          }
+        }
+      }
+
+      render();
+      checkWin();
+    }
+
+    function flagCell(r, c) {
+      if (revealed[r][c] || gameOver) return;
+      flags[r][c] = !flags[r][c];
+      render();
+    }
+
+    function revealAllMines() {
+      for (let i = 0; i < ROWS; i++) {
+        for (let j = 0; j < COLS; j++) {
+          if (board[i][j] === -1) revealed[i][j] = true;
+        }
+      }
+      render();
+    }
+
+    function checkWin() {
+      let unrevealedSafe = 0;
+      for (let i = 0; i < ROWS; i++) {
+        for (let j = 0; j < COLS; j++) {
+          if (!revealed[i][j] && board[i][j] !== -1) unrevealedSafe++;
+        }
+      }
+      if (unrevealedSafe === 0 && !gameOver) {
+        alert("ПОБЕДА! 🎉");
+        tg.HapticFeedback.notificationOccurred("success");
+      }
+    }
+
+    // Запуск игры
+    startGame();
+  </script>
+</body>
+</html>
