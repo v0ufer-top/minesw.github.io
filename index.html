@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>2048 — плавная адаптивная игра</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+            font-family: 'Arial', 'Helvetica', sans-serif;
+        }
+
+        body {
+            min-height: 100vh;
+            background: linear-gradient(145deg, #faf8ef 0%, #f5f0e8 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 12px;
+            margin: 0;
+            touch-action: pan-y; /* разрешаем вертикальный скролл, но горизонтальные жесты обработаем сами */
+        }
+
+        .game-container {
+            max-width: 500px;
+            width: 100%;
+            background: rgba(255, 255, 255, 0.5);
+            backdrop-filter: blur(4px);
+            border-radius: 36px;
+            padding: 20px 15px 25px;
+            box-shadow: 0 20px 35px rgba(0, 0, 0, 0.1), 0 5px 12px rgba(0, 0, 0, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.7);
+        }
+
+        /* header */
+        .header {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            padding: 0 8px;
+        }
+
+        .title {
+            font-size: clamp(2.4rem, 12vw, 3.8rem);
+            font-weight: 800;
+            line-height: 1;
+            color: #776e65;
+            text-shadow: 3px 3px 0 rgba(180, 160, 140, 0.2);
+            letter-spacing: 1px;
+        }
+
+        .scores {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+
+        .score-box, .best-box {
+            background: #bbada0;
+            padding: 8px 15px;
+            border-radius: 40px;
+            color: #f9f6f2;
+            font-weight: bold;
+            text-align: center;
+            box-shadow: inset 0 -3px 0 #8f7a66, 0 6px 10px rgba(0,0,0,0.1);
+            min-width: 85px;
+            transition: transform 0.15s ease;
+        }
+
+        .score-label {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            opacity: 0.8;
+        }
+
+        .score-value {
+            font-size: 1.8rem;
+            line-height: 1.2;
+            font-weight: 800;
+            transition: transform 0.2s cubic-bezier(0.2, 0.9, 0.3, 1.3);
+        }
+
+        .score-value.pop {
+            transform: scale(1.15);
+            color: #ffe8c5;
+        }
+
+        /* кнопка новой игры */
+        .new-game-btn {
+            background: #8f7a66;
+            border: none;
+            color: white;
+            font-size: 1.2rem;
+            font-weight: bold;
+            padding: 12px 22px;
+            border-radius: 40px;
+            cursor: pointer;
+            box-shadow: 0 8px 0 #5f4c3b, 0 8px 15px rgba(0,0,0,0.2);
+            transition: all 0.1s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+            margin-top: 8px;
+            width: fit-content;
+            border: 1px solid #cbb89e;
+            letter-spacing: 1px;
+            touch-action: manipulation;
+        }
+
+        .new-game-btn:active {
+            transform: translateY(6px);
+            box-shadow: 0 2px 0 #5f4c3b, 0 5px 12px rgba(0,0,0,0.2);
+        }
+
+        /* игровое поле */
+        .board-wrapper {
+            background: #bbada0;
+            border-radius: 28px;
+            padding: 12px;
+            box-shadow: inset 0 -6px 0 #9b8a7c, 0 15px 25px rgba(0, 0, 0, 0.2);
+            margin: 12px 0 18px;
+            touch-action: none; /* жесты полностью обрабатываем js */
+        }
+
+        .board-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            aspect-ratio: 1 / 1;
+        }
+
+        .cell {
+            background: rgba(238, 228, 218, 0.45);
+            border-radius: 18px;
+            box-shadow: inset 0 -4px 0 #a09183, 0 0 0 1px #e5d8cb;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: clamp(1.4rem, 7vw, 2.8rem);
+            color: #776e65;
+            transition: all 0.1s ease;
+            aspect-ratio: 1 / 1;
+            position: relative;
+            transform: translateZ(0); /* hardware acceleration */
+        }
+
+        .tile {
+            position: absolute;
+            width: calc(100% - 4px);
+            height: calc(100% - 4px);
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: clamp(1.4rem, 7vw, 2.8rem);
+            color: #f9f6f2;
+            background: #e9dbca;
+            top: 2px;
+            left: 2px;
+            box-shadow: 0 6px 0 #a68b77, 0 8px 12px rgba(0, 0, 0, 0.2);
+            transition: transform 0.12s ease-out, background 0.15s, box-shadow 0.1s;
+            transform: scale(1);
+            will-change: transform, left, top, background;
+            z-index: 10;
+            backface-visibility: hidden;
+        }
+
+        /* разные цвета плиток + мягкие тени */
+        .tile[data-value="2"] { background: #eee4da; color: #776e65; box-shadow: 0 6px 0 #cdc0b0; }
+        .tile[data-value="4"] { background: #ede0c8; color: #776e65; box-shadow: 0 6px 0 #bbaa95; }
+        .tile[data-value="8"] { background: #f2b179; color: #f9f6f2; box-shadow: 0 6px 0 #binc47; }
+        .tile[data-value="16"] { background: #f59563; color: #f9f6f2; box-shadow: 0 6px 0 #b85e3a; }
+        .tile[data-value="32"] { background: #f67c5f; color: #f9f6f2; box-shadow: 0 6px 0 #b54b30; }
+        .tile[data-value="64"] { background: #f65e3b; color: #f9f6f2; box-shadow: 0 6px 0 #aa3b1e; }
+        .tile[data-value="128"] { background: #edcf72; color: #f9f6f2; box-shadow: 0 6px 0 #b69f46; font-size: clamp(1.2rem, 6vw, 2.2rem);}
+        .tile[data-value="256"] { background: #edcc61; color: #f9f6f2; box-shadow: 0 6px 0 #b5983a; }
+        .tile[data-value="512"] { background: #edc850; color: #f9f6f2; box-shadow: 0 6px 0 #b58d31; }
+        .tile[data-value="1024"] { background: #edc53f; color: #f9f6f2; box-shadow: 0 6px 0 #b57c28; font-size: clamp(1rem, 5vw, 1.8rem);}
+        .tile[data-value="2048"] { background: #edc22e; color: #f9f6f2; box-shadow: 0 6px 0 #b56f1e; }
+        .tile[data-value="4096"] { background: #3d3a33; color: #f9f6f2; box-shadow: 0 6px 0 #26231e; } /* редко, но пусть */
+
+        /* анимация появления */
+        .tile-new {
+            animation: popIn 0.2s cubic-bezier(0.2, 0.9, 0.3, 1.3) forwards;
+        }
+
+        @keyframes popIn {
+            0% { transform: scale(0.2); opacity: 0.5; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        /* анимация слияния (merge) */
+        .tile-merge {
+            animation: mergePop 0.18s cubic-bezier(0.3, 0.9, 0.4, 1.3) forwards;
+        }
+
+        @keyframes mergePop {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.25); filter: brightness(1.15); }
+            100% { transform: scale(1); }
+        }
+
+        /* сообщение о победе / проигрыше */
+        .overlay-message {
+            text-align: center;
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #776e65;
+            padding: 15px 20px;
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(8px);
+            border-radius: 60px;
+            margin: 10px 0 0;
+            border: 2px solid #e6d9cb;
+            box-shadow: 0 6px 0 #bbada0;
+            transition: opacity 0.3s;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+    </style>
+</head>
+<body>
+<div class="game-container">
+    <div class="header">
+        <div class="title">2048</div>
+        <div class="scores">
+            <div class="score-box" id="scoreBox">
+                <div class="score-label">Счёт</div>
+                <div class="score-value" id="scoreDisplay">0</div>
+            </div>
+            <div class="best-box" id="bestBox">
+                <div class="score-label">Рекорд</div>
+                <div class="score-value" id="bestDisplay">0</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="board-wrapper">
+        <div class="board-grid" id="board-grid">
+            <!-- ячейки (background) рендерим через js, но можно сразу вставить -->
+        </div>
+    </div>
+
+    <div class="footer">
+        <button class="new-game-btn" id="newGameBtn">⟳ Новая игра</button>
+        <div id="gameStatus" class="overlay-message hidden"></div>
+    </div>
+</div>
+
+<script>
+    (function() {
+        // размер
+        const SIZE = 4;
+        let board = [];
+        let score = 0;
+        let bestScore = 0;
+
+        // DOM элементы
+        const boardGrid = document.getElementById('board-grid');
+        const scoreDisplay = document.getElementById('scoreDisplay');
+        const bestDisplay = document.getElementById('bestDisplay');
+        const newGameBtn = document.getElementById('newGameBtn');
+        const gameStatus = document.getElementById('gameStatus');
+
+        // для жестов
+        let touchStartX = 0, touchStartY = 0;
+        let touchEndX = 0, touchEndY = 0;
+        const minSwipeDistance = 30; // минимальное расстояние для свайпа
+
+        // инициализация сетки (пустые ячейки)
+        function createBoardCells() {
+            boardGrid.innerHTML = '';
+            for (let i = 0; i < SIZE * SIZE; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'cell';
+                boardGrid.appendChild(cell);
+            }
+        }
+        createBoardCells();
+
+        // загрузка рекорда
+        try {
+            const saved = localStorage.getItem('2048_best');
+            if (saved) bestScore = parseInt(saved, 10) || 0;
+        } catch (e) { /* ignore */ }
+        bestDisplay.innerText = bestScore;
+
+        // обновление отображения счета с анимацией
+        function updateScore(newScore) {
+            if (newScore === score) return;
+            score = newScore;
+            scoreDisplay.innerText = score;
+            scoreDisplay.classList.add('pop');
+            setTimeout(() => scoreDisplay.classList.remove('pop'), 150);
+
+            if (score > bestScore) {
+                bestScore = score;
+                bestDisplay.innerText = bestScore;
+                bestDisplay.classList.add('pop');
+                setTimeout(() => bestDisplay.classList.remove('pop'), 150);
+                try { localStorage.setItem('2048_best', bestScore); } catch (e) {}
+            }
+        }
+
+        // очистка сообщения о статусе
+        function hideStatus() {
+            gameStatus.classList.add('hidden');
+            gameStatus.innerText = '';
+        }
+
+        // показать статус (win/over)
+        function showStatus(text, isWin = false) {
+            gameStatus.innerText = text;
+            gameStatus.classList.remove('hidden');
+            if (isWin) {
+                gameStatus.style.background = '#ede0c8';
+                gameStatus.style.color = '#776e65';
+            } else {
+                gameStatus.style.background = '#f5e3d0';
+            }
+        }
+
+        // получить все плитки из DOM (для плавного обновления)
+        function getTileElements() {
+            return document.querySelectorAll('.tile');
+        }
+
+        // удалить все плитки из DOM
+        function removeAllTiles() {
+            document.querySelectorAll('.tile').forEach(t => t.remove());
+        }
+
+        // отрисовка доски из board (массива чисел) с анимациями
+        function renderBoard(mergedPositions = new Set(), newPositions = new Set()) {
+            // mergedPositions — строки "r,c" для анимации слияния
+            // newPositions — аналогично для новых плиток
+
+            // Сначала удалим все плитки, которых нет на доске или пересоздадим упрощённо,
+            // но для сохранения элементов используем более интеллектуальный подход:
+            // удалим все и создадим заново — для простоты, но с анимациями.
+            // Это гарантирует правильное расположение и цвет.
+            const oldTiles = Array.from(getTileElements());
+            // коллекция живых элементов, мы их позже удалим (может резко моргнуть)
+            // Чтобы избежать моргания, можно перемещать, но сложно. 
+            // В 2048 лучше полное обновление с анимациями добавления.
+            // но старые плитки удалим сразу, а новые нарисуем поверх.
+            oldTiles.forEach(t => t.remove());
+
+            for (let r = 0; r < SIZE; r++) {
+                for (let c = 0; c < SIZE; c++) {
+                    const val = board[r][c];
+                    if (val === 0) continue;
+
+                    const cell = boardGrid.children[r * SIZE + c];
+                    const rect = cell.getBoundingClientRect();
+                    const boardRect = boardGrid.getBoundingClientRect();
+
+                    // создаём плитку
+                    const tile = document.createElement('div');
+                    tile.className = 'tile';
+                    tile.setAttribute('data-value', val);
+                    tile.innerText = val;
+
+                    // позиционирование абсолютно внутри board-wrapper (через смещение)
+                    const cellLeft = cell.offsetLeft;
+                    const cellTop = cell.offsetTop;
+
+                    tile.style.left = cellLeft + 'px';
+                    tile.style.top = cellTop + 'px';
+                    tile.style.width = cell.offsetWidth - 4 + 'px'; // небольшая поправка (уже задано в css width 100% через left/right? но left/right задали)
+                    // лучше просто width/height через calc? зададим явно ширину как у родительской ячейки (минус 2px со всех сторон)
+                    // фиксим подгонку под границы
+                    tile.style.width = (cell.offsetWidth - 4) + 'px';
+                    tile.style.height = (cell.offsetHeight - 4) + 'px';
+
+                    // анимации
+                    const key = r + ',' + c;
+                    if (newPositions.has(key)) {
+                        tile.classList.add('tile-new');
+                    } else if (mergedPositions.has(key)) {
+                        tile.classList.add('tile-merge');
+                    }
+
+                    boardGrid.appendChild(tile);
+                }
+            }
+        }
+
+        // проверка на победу (наличие 2048)
+        function checkWin() {
+            for (let r = 0; r < SIZE; r++) {
+                for (let c = 0; c < SIZE; c++) {
+                    if (board[r][c] === 2048) return true;
+                }
+            }
+            return false;
+        }
+
+        // проверка, есть ли возможные ходы
+        function canMove() {
+            for (let r = 0; r < SIZE; r++) {
+                for (let c = 0; c < SIZE; c++) {
+                    if (board[r][c] === 0) return true;
+                    if (c < SIZE-1 && board[r][c] === board[r][c+1]) return true;
+                    if (r < SIZE-1 && board[r][c] === board[r+1][c]) return true;
+                }
+            }
+            return false;
+        }
+
+        // добавить случайную плитку (2 или 4)
+        function addRandomTile() {
+            const empty = [];
+            for (let r = 0; r < SIZE; r++) {
+                for (let c = 0; c < SIZE; c++) {
+                    if (board[r][c] === 0) empty.push([r, c]);
+                }
+            }
+            if (empty.length === 0) return null;
+            const [r, c] = empty[Math.floor(Math.random() * empty.length)];
+            board[r][c] = Math.random() < 0.9 ? 2 : 4;
+            return r + ',' + c;
+        }
+
+        // сброс игры
+        function newGame() {
+            board = [
+                [0,0,0,0],
+                [0,0,0,0],
+                [0,0,0,0],
+                [0,0,0,0]
+            ];
+            score = 0;
+            updateScore(0);
+            hideStatus();
+
+            // добавляем две стартовые плитки
+            const newTiles = new Set();
+            const pos1 = addRandomTile();
+            if (pos1) newTiles.add(pos1);
+            const pos2 = addRandomTile();
+            if (pos2) newTiles.add(pos2);
+
+            renderBoard(new Set(), newTiles);
+        }
+
+        // главная функция движения
+        function move(direction) {
+            // direction: 'left', 'right', 'up', 'down'
+            let moved = false;
+            const mergedPositions = new Set();   // клетки, где произошло слияние (для анимации)
+            const newPositions = new Set();       // новые плитки после хода
+
+            // сохраним копию старого борда для проверки изменений
+            const oldBoard = board.map(row => [...row]);
+
+            // вспомогательные функции для сжатия и слияния
+            function processRow(row) {
+                // убираем нули
+                let arr = row.filter(v => v !== 0);
+                let merged = [];
+                let used = Array(arr.length).fill(false);
+                for (let i = 0; i < arr.length; i++) {
+                    if (used[i]) continue;
+                    if (i < arr.length - 1 && arr[i] === arr[i+1] && !used[i+1]) {
+                        merged.push(arr[i] * 2);
+                        used[i] = used[i+1] = true;
+                    } else {
+                        merged.push(arr[i]);
+                        used[i] = true;
+                    }
+                }
+                // дополнить нулями до длины 4
+                while (merged.length < SIZE) merged.push(0);
+                return merged;
+            }
+
+            // применяем слияние и запоминаем позиции merged
+            if (direction === 'left') {
+                for (let r = 0; r < SIZE; r++) {
+                    const original = board[r];
+                    const newRow = processRow(original);
+                    for (let c = 0; c < SIZE; c++) {
+                        if (original[c] !== newRow[c]) moved = true;
+                        // ищем слияние: если значение удвоилось и не ноль — отметим позицию
+                        if (newRow[c] !== 0) {
+                            // проверка: было ли слияние? смотрим oldBoard — если два соседних равных дали сумму
+                            // простой способ: если newRow[c] > original[c] и original[c] !== 0 (т.е. не появилась из воздуха)
+                            // но т.к. могла сдвинуться — сложно. Маркируем все не-zero как потенциальный merge, если они равны удвоенному какому-то
+                            // для анимации пометим все конечные, кроме тех что просто двигались. Но проще: если в оригинальной строке была пара,
+                            // мы можем примерно определить. ради простоты пометим все новые положения, которые не были нулями, но в этом ряду 
+                            // использовалось слияние. Для простоты используем: если новое значение не было получено простым переносом (т.е. в процессе участвовало слияние)
+                            // за неимением точных данных, анимацию слияния поставим там, где число стало результатом слияния (т.е. его значение - степень 2, и оно > любого исходного элемента на этой позиции?)
+                            // упростим: пропустим точную маркировку для merge, либо будем всегда применять класс merge, когда число появилось как сумма двух.
+                            // Лучше будем передавать координаты плиток, которые появились в результате слияния. 
+                            // В данной реализации мы можем проверить, что исходно в ряду была пара, и новое значение > каждого из original на этой позиции.
+                            // Однако, если двигали, то не всегда. Оставим только анимацию появления новых. Для merge тоже добавим класс при слиянии.
+                        }
+                    }
+                    board[r] = newRow;
+                }
+                // после обработки всей доски отметим mergedPositions (поищем ячейки, которые в результате слияния изменились)
+                for (let r = 0; r < SIZE; r++) {
+                    for (let c = 0; c < SIZE; c++) {
+                        if (board[r][c] !== 0 && oldBoard[r][c] !== board[r][c]) {
+                            // если новое значение не было получено просто сдвигом, проверим: возможно, это результат слияния
+                            // если справа (или в зависимости от направления) была такая же сумма — но сложно. для демо применим эффект ко всем изменившимся не-нулям
+                            // чтобы не было слишком много, используем проверку: если старое значение в этой клетке было другим ненулевым и новое больше
+                            if (oldBoard[r][c] !== 0 && board[r][c] > oldBoard[r][c]) {
+                                mergedPositions.add(r+','+c);
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (direction === 'right') {
+                for (let r = 0; r < SIZE; r++) {
+                    const original = board[r];
+                    const rev = [...original].reverse();
+                    const newRev = processRow(rev);
+                    const newRow = newRev.reverse();
+                    for (let c = 0; c < SIZE; c++) {
+                        if (original[c] !== newRow[c]) moved = true;
+                    }
+                    board[r] = newRow;
+                }
+                for (let r = 0; r < SIZE; r++) {
+                    for (let c = 0; c < SIZE; c++) {
+                        if (board[r][c] !== 0 && oldBoard[r][c] !== board[r][c] && oldBoard[r][c] !== 0 && board[r][c] > oldBoard[r][c]) {
+                            mergedPositions.add(r+','+c);
+                        }
+                    }
+                }
+            }
+
+            if (direction === 'up') {
+                for (let c = 0; c < SIZE; c++) {
+                    let col = board.map(row => row[c]);
+                    const newCol = processRow(col);
+                    for (let r = 0; r < SIZE; r++) {
+                        if (board[r][c] !== newCol[r]) moved = true;
+                        board[r][c] = newCol[r];
+                    }
+                }
+                for (let r = 0; r < SIZE; r++) {
+                    for (let c = 0; c < SIZE; c++) {
+                        if (board[r][c] !== 0 && oldBoard[r][c] !== board[r][c] && oldBoard[r][c] !== 0 && board[r][c] > oldBoard[r][c]) {
+                            mergedPositions.add(r+','+c);
+                        }
+                    }
+                }
+            }
+
+            if (direction === 'down') {
+                for (let c = 0; c < SIZE; c++) {
+                    let col = board.map(row => row[c]).reverse();
+                    const newColRev = processRow(col);
+                    const newCol = newColRev.reverse();
+                    for (let r = 0; r < SIZE; r++) {
+                        if (board[r][c] !== newCol[r]) moved = true;
+                        board[r][c] = newCol[r];
+                    }
+                }
+                for (let r = 0; r < SIZE; r++) {
+                    for (let c = 0; c < SIZE; c++) {
+                        if (board[r][c] !== 0 && oldBoard[r][c] !== board[r][c] && oldBoard[r][c] !== 0 && board[r][c] > oldBoard[r][c]) {
+                            mergedPositions.add(r+','+c);
+                        }
+                    }
+                }
+            }
+
+            // пересчет счета (сумма всех изменений: увеличился за счет слияний)
+            let newScore = 0;
+            for (let r = 0; r < SIZE; r++) {
+                for (let c = 0; c < SIZE; c++) {
+                    newScore += board[r][c];
+                }
+            }
+            // разница со старым счетом = прибавка за этот ход (score уже накоплен)
+            const delta = newScore - oldBoard.flat().reduce((a,b)=>a+b,0);
+            if (delta > 0) {
+                updateScore(score + delta);
+            } else {
+                updateScore(score); // обновить отображение без скачка
+            }
+
+            if (moved) {
+                // добавить случайную плитку
+                const newTilePos = addRandomTile();
+                const newSet = new Set();
+                if (newTilePos) newSet.add(newTilePos);
+
+                // рендерим с объединенными анимациями
+                renderBoard(mergedPositions, newSet);
+
+                // проверка состояния
+                if (checkWin()) {
+                    showStatus('✨ Ты выиграл! ✨', true);
+                } else if (!canMove()) {
+                    showStatus('💀 Игра окончена 💀', false);
+                }
+            } else {
+                // если не двигались, просто перерисовать (чтобы сбросить возможные артефакты)
+                renderBoard(new Set(), new Set());
+            }
+        }
+
+        // обработчики клавиш
+        function handleKey(e) {
+            e.preventDefault();
+            const key = e.key;
+            if (key.startsWith('Arrow')) {
+                e.preventDefault();
+                switch (key) {
+                    case 'ArrowLeft': move('left'); break;
+                    case 'ArrowRight': move('right'); break;
+                    case 'ArrowUp': move('up'); break;
+                    case 'ArrowDown': move('down'); break;
+                }
+            }
+        }
+
+        // тач-события
+        function handleTouchStart(e) {
+            e.preventDefault();
+            const touch = e.touches[0];
+            touchStartX = touch.clientX;
+            touchStartY = touch.clientY;
+        }
+
+        function handleTouchEnd(e) {
+            e.preventDefault();
+            if (touchStartX === 0 && touchStartY === 0) return;
+
+            const touch = e.changedTouches[0];
+            touchEndX = touch.clientX;
+            touchEndY = touch.clientY;
+
+            const dx = touchEndX - touchStartX;
+            const dy = touchEndY - touchStartY;
+
+            if (Math.abs(dx) < minSwipeDistance && Math.abs(dy) < minSwipeDistance) return;
+
+            if (Math.abs(dx) > Math.abs(dy)) {
+                if (dx > 0) move('right');
+                else move('left');
+            } else {
+                if (dy > 0) move('down');
+                else move('up');
+            }
+
+            touchStartX = touchStartY = 0;
+        }
+
+        // инициализируем игру
+        newGame();
+
+        // подписки
+        window.addEventListener('keydown', handleKey);
+        boardGrid.addEventListener('touchstart', handleTouchStart, { passive: false });
+        boardGrid.addEventListener('touchend', handleTouchEnd, { passive: false });
+        newGameBtn.addEventListener('click', () => newGame());
+        // также запретим скролл при свайпе на grid
+        boardGrid.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+
+        // также адаптация под ресайз
+        window.addEventListener('resize', () => {
+            renderBoard(new Set(), new Set());
+        });
+    })();
+</script>
+</body>
+</html>
